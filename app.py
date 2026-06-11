@@ -36,12 +36,13 @@ def download_all(stocks):
         end = datetime.now()
         start = end - timedelta(days=365 * 3)
 
-        request = StockBarsRequest(
-            symbol_or_symbols=stocks,
-            timeframe=TimeFrame.Day,
-            start=start,
-            end=end
-        )
+request = StockBarsRequest(
+    symbol_or_symbols=stocks,
+    timeframe=TimeFrame.Day,
+    start=start,
+    end=end,
+    feed="iex"   # 👈 ESTA LÍNEA ES LA CLAVE
+)
 
         bars = client.get_stock_bars(request).df
 

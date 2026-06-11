@@ -30,7 +30,7 @@ stocks = ["MU","MSFT","CIEN","VST","NVDA","TSLA","PLTR","AMD","AMZN","AAPL","NFL
           "SMCI","SNOW"]
 
 # ========================= DATA =========================
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def download_all(stocks):
     try:
         end = datetime.now()
@@ -41,7 +41,7 @@ def download_all(stocks):
             timeframe=TimeFrame.Day,
             start=start,
             end=end,
-            feed="iex"  # 👈 ESTA LÍNEA ARREGLA TODO
+            feed="iex"
         )
 
         bars = client.get_stock_bars(request).df
@@ -53,14 +53,18 @@ def download_all(stocks):
 
         for symbol in stocks:
             try:
-                if symbol not in bars.index.get_level_values(0):
-                    continue
+                # ✅ Manejo robusto del index
+                if isinstance(bars.index, pd.MultiIndex):
+                    if symbol not in bars.index.get_level_values(0):
+                        continue
+                    df = bars.xs(symbol, level=0).copy()
+                else:
+                    df = bars[bars["symbol"] == symbol].copy()
 
-                df = bars.xs(symbol, level=0).copy()
-
-                df.columns = ["Open","High","Low","Close","Volume","Trades","VWAP"]
-
-                df = df[["Open","High","Low","Close","Volume"]]
+                # ✅ Columnas seguras
+                df = df.rename(columns=str.title)
+                needed = ["Open","High","Low","Close","Volume"]
+                df = df[[c for c in needed if c in df.columns]]
 
                 df.index = pd.to_datetime(df.index)
                 df = df.sort_index().dropna()
@@ -111,7 +115,6 @@ def compute_factors(df):
     df["SMA50"] = df["Close"].rolling(50).mean()
     df["SMA200"] = df["Close"].rolling(200).mean()
 
-    # RSI
     delta = df["Close"].diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
@@ -223,7 +226,7 @@ def analyze(stock, cs, all_data, market):
     }
 
 # ========================= UI =========================
-st.title("🔥 Quant Screener PRO — FIXED")
+st.title("🔥 Quant Screener PRO — INTERACTIVE")
 
 market = market_condition()
 st.metric("Market Regime", market)
@@ -270,6 +273,67 @@ if pro_table:
 else:
     st.warning("Sin setups")
 
+# ========================= 📊 GRAFICA PRO =========================
 if data_map:
     selected = st.selectbox("Ticker", list(data_map.keys()))
-    st.line_chart(data_map[selected]["Close"])
+    df_chart = data_map[selected].copy()
+
+    # ✅ Medias móviles (BONUS)
+    df_chart["SMA50"] = df_chart["Close"].rolling(50).mean()
+    df_chart["SMA200"] = df_chart["Close"].rolling(200).mean()
+
+    fig = go.Figure()
+
+    # 🕯️ Velas
+    fig.add_trace(go.Candlestick(
+        x=df_chart.index,
+        open=df_chart["Open"],
+        high=df_chart["High"],
+        low=df_chart["Low"],
+        close=df_chart["Close"],
+        name="Price"
+    ))
+
+    # 📊 Volumen
+    fig.add_trace(go.Bar(
+        x=df_chart.index,
+        y=df_chart["Volume"],
+        name="Volume",
+        yaxis="y2",
+        opacity=0.3
+    ))
+
+    # 📈 SMA50
+    fig.add_trace(go.Scatter(
+        x=df_chart.index,
+        y=df_chart["SMA50"],
+        name="SMA50",
+        line=dict(width=1)
+    ))
+
+    # 📉 SMA200
+    fig.add_trace(go.Scatter(
+        x=df_chart.index,
+        y=df_chart["SMA200"],
+        name="SMA200",
+        line=dict(width=1)
+    ))
+
+    fig.update_layout(
+        title=f"{selected} — Trading View",
+        template="plotly_dark",
+        height=650,
+        hovermode="x unified",
+
+        yaxis=dict(title="Precio"),
+        yaxis2=dict(
+            title="Volumen",
+            overlaying="y",
+            side="right",
+            showgrid=False
+        ),
+
+        xaxis_rangeslider_visible=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)

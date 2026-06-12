@@ -149,6 +149,68 @@ def rating(prob):
     return "🔴 Sell"
 
 # ========================= CROSS SECTION =========================
+def daily_change_table(all_data):
+    rows = []
+
+    for ticker, df in all_data.items():
+        try:
+            if len(df) < 2:
+                continue
+
+            df = df.sort_index()
+            last = df.iloc[-1]
+            prev = df.iloc[-2]
+
+            change_pct = (last["Close"] - prev["Close"]) / prev["Close"] * 100
+
+            rows.append({
+                "Ticker": ticker,
+                "Close Today": round(last["Close"], 2),
+                "Close Prev": round(prev["Close"], 2),
+                "% Change": round(change_pct, 2),
+                "Type": "📈 Plusvalía" if change_pct > 0 else "📉 Minusvalía"
+            })
+
+        except Exception:
+            continue
+
+    df_changes = pd.DataFrame(rows)
+
+    if not df_changes.empty:
+        df_changes = df_changes.sort_values("% Change", ascending=False)
+
+    return df_changes
+def daily_change_table(all_data):
+    rows = []
+
+    for ticker, df in all_data.items():
+        try:
+            if len(df) < 2:
+                continue
+
+            df = df.sort_index()
+            last = df.iloc[-1]
+            prev = df.iloc[-2]
+
+            change_pct = (last["Close"] - prev["Close"]) / prev["Close"] * 100
+
+            rows.append({
+                "Ticker": ticker,
+                "Close Today": round(last["Close"], 2),
+                "Close Prev": round(prev["Close"], 2),
+                "% Change": round(change_pct, 2),
+                "Type": "📈 Plusvalía" if change_pct > 0 else "📉 Minusvalía"
+            })
+
+        except Exception:
+            continue
+
+    df_changes = pd.DataFrame(rows)
+
+    if not df_changes.empty:
+        df_changes = df_changes.sort_values("% Change", ascending=False)
+
+    return df_changes
 def build_cross_section(all_data):
     rows = []
 
@@ -183,7 +245,37 @@ def build_cross_section(all_data):
         cs[col] = cs[col].rank(pct=True)
 
     return cs
+def daily_change_table(all_data):
+    rows = []
 
+    for ticker, df in all_data.items():
+        try:
+            if len(df) < 2:
+                continue
+
+            df = df.sort_index()
+            last = df.iloc[-1]
+            prev = df.iloc[-2]
+
+            change_pct = (last["Close"] - prev["Close"]) / prev["Close"] * 100
+
+            rows.append({
+                "Ticker": ticker,
+                "Close Today": round(last["Close"], 2),
+                "Close Prev": round(prev["Close"], 2),
+                "% Change": round(change_pct, 2),
+                "Type": "📈 Plusvalía" if change_pct > 0 else "📉 Minusvalía"
+            })
+
+        except Exception:
+            continue
+
+    df_changes = pd.DataFrame(rows)
+
+    if not df_changes.empty:
+        df_changes = df_changes.sort_values("% Change", ascending=False)
+
+    return df_changes
 # ========================= ANALYSIS =========================
 def analyze(stock, cs, all_data, market):
     if stock not in all_data:
@@ -224,7 +316,10 @@ def analyze(stock, cs, all_data, market):
         "SellZone": round(last["Close"] + last["ATR"] * 2.2, 2),
         "Data": df
     }
+st.sidebar.header("⚙️ Risk Management")
 
+account_size = st.sidebar.number_input("💰 Capital ($)", value=10000)
+risk_pct = st.sidebar.slider("⚠️ Riesgo por trade (%)", 0.5, 5.0, 1.0) / 100
 # ========================= UI =========================
 st.title("🔥 Quant Screener PRO — INTERACTIVE")
 
@@ -268,23 +363,152 @@ else:
     st.warning("Sin datos suficientes")
 
 st.subheader("🚀 Trade Setup")
+# ========================= 📊 DAILY CHANGE =========================
+st.subheader("📊 Cambio Diario (Plusvalía / Minusvalía)")
+
+df_changes = daily_change_table(data)
+
+if not df_changes.empty:
+    def highlight_row(row):
+        if row["% Change"] > 0:
+            return ["background-color: rgba(0,255,0,0.15)"] * len(row)
+        elif row["% Change"] < 0:
+            return ["background-color: rgba(255,0,0,0.15)"] * len(row)
+        return [""] * len(row)
+
+
+    def color_pct(val):
+        if isinstance(val, (int, float)):
+            return "color: lime; font-weight: bold" if val > 0 else "color: red; font-weight: bold"
+        return ""
+
+
+    def color_type(val):
+        return "color: lime; font-weight: bold" if "Plusvalía" in val else "color: red; font-weight: bold"
+
+
+    styled_df = (
+        df_changes.style
+            .apply(highlight_row, axis=1)
+            .map(color_pct, subset=["% Change"])
+            .map(color_type, subset=["Type"])
+            .format({"% Change": "{:.2f}%"})
+    )
+
+    st.dataframe(styled_df, use_container_width=True)
+else:
+    st.warning("No hay datos suficientes")
 if pro_table:
     st.dataframe(pd.DataFrame(pro_table).sort_values("Score", ascending=False))
 else:
     st.warning("Sin setups")
-
-# ========================= 📊 GRAFICA PRO =========================
+# ========================= 📊 GRAFICA PRO+ (SEÑALES) =========================
+# ========================= 📊 HEDGE FUND MODE =========================
 if data_map:
     selected = st.selectbox("Ticker", list(data_map.keys()))
     df_chart = data_map[selected].copy()
 
-    # ✅ Medias móviles (BONUS)
+    # ================= INDICADORES =================
     df_chart["SMA50"] = df_chart["Close"].rolling(50).mean()
     df_chart["SMA200"] = df_chart["Close"].rolling(200).mean()
 
-    fig = go.Figure()
+    # RSI
+    delta = df_chart["Close"].diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rs = gain / (loss + 1e-9)
+    df_chart["RSI"] = 100 - (100 / (1 + rs))
 
-    # 🕯️ Velas
+    # ATR
+    tr = pd.concat([
+        df_chart["High"] - df_chart["Low"],
+        (df_chart["High"] - df_chart["Close"].shift()).abs(),
+        (df_chart["Low"] - df_chart["Close"].shift()).abs()
+    ], axis=1).max(axis=1)
+    df_chart["ATR"] = tr.rolling(14).mean()
+
+    # Momentum
+    df_chart["Momentum"] = df_chart["Close"].pct_change(5)
+
+    # ================= SEÑALES FILTRADAS =================
+    df_chart["BUY"] = (
+        (df_chart["SMA50"] > df_chart["SMA200"]) &
+        (df_chart["RSI"] > 40) &
+        (df_chart["Momentum"] > 0)
+    )
+
+    df_chart["SELL"] = (
+        (df_chart["SMA50"] < df_chart["SMA200"]) &
+        (df_chart["RSI"] < 60) &
+        (df_chart["Momentum"] < 0)
+    )
+
+    # ================= BACKTEST VISUAL =================
+    trades = []
+    in_trade = False
+
+    for i in range(len(df_chart)):
+        row = df_chart.iloc[i]
+
+        if not in_trade and row["BUY"]:
+            entry = row["Close"]
+            sl = entry - row["ATR"] * 1.5
+            tp1 = entry + row["ATR"] * 1.5
+            tp2 = entry + row["ATR"] * 3
+
+            # ================= POSITION SIZING =================
+            risk_per_share = abs(entry - sl)
+
+            if risk_per_share > 0:
+                position_size = (account_size * risk_pct) / risk_per_share
+                shares = int(position_size)
+
+                dollar_position = shares * entry
+            else:
+                shares = 0
+                dollar_position = 0
+
+            trades.append({
+                "entry_idx": i,
+                "entry_price": entry,
+                "sl": sl,
+                "tp1": tp1,
+                "tp2": tp2,
+                "exit_idx": None,
+                "exit_price": None,
+                "shares": shares,
+                "position_value": dollar_position,
+                "risk_per_share": risk_per_share
+            })
+            in_trade = True
+
+        elif in_trade:
+            current_trade = trades[-1]
+
+            if row["Low"] <= current_trade["sl"]:
+                current_trade["exit_idx"] = i
+                current_trade["exit_price"] = current_trade["sl"]
+                in_trade = False
+
+            elif row["High"] >= current_trade["tp2"]:
+                current_trade["exit_idx"] = i
+                current_trade["exit_price"] = current_trade["tp2"]
+                in_trade = False
+
+    # ================= FIGURA =================
+    from plotly.subplots import make_subplots
+    import numpy as np
+
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.6, 0.2, 0.2],
+        vertical_spacing=0.03
+    )
+
+    colors = np.where(df_chart["Close"] >= df_chart["Open"], "green", "red")
+
+    # PRICE
     fig.add_trace(go.Candlestick(
         x=df_chart.index,
         open=df_chart["Open"],
@@ -292,48 +516,92 @@ if data_map:
         low=df_chart["Low"],
         close=df_chart["Close"],
         name="Price"
-    ))
+    ), row=1, col=1)
 
-    # 📊 Volumen
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart["SMA50"], name="SMA50"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=df_chart.index, y=df_chart["SMA200"], name="SMA200"), row=1, col=1)
+
+    # ================= DIBUJAR TRADES =================
+    for t in trades:
+        if t["exit_idx"] is None:
+            continue
+
+        x0 = df_chart.index[t["entry_idx"]]
+        x1 = df_chart.index[t["exit_idx"]]
+
+        # Línea entrada
+        fig.add_shape(type="line",
+            x0=x0, x1=x1,
+            y0=t["entry_price"], y1=t["entry_price"],
+            line=dict(color="blue", width=2)
+        )
+        fig.add_annotation(
+            x=x0,
+            y=t["entry_price"],
+            text=f"{t['shares']} shares<br>${int(t['position_value'])}",
+            showarrow=True,
+            arrowhead=1,
+            font=dict(size=10, color="white"),
+            bgcolor="black"
+        )
+        # SL
+        fig.add_shape(type="line",
+            x0=x0, x1=x1,
+            y0=t["sl"], y1=t["sl"],
+            line=dict(color="red", dash="dot")
+        )
+
+        # TP
+        fig.add_shape(type="line",
+            x0=x0, x1=x1,
+            y0=t["tp2"], y1=t["tp2"],
+            line=dict(color="green", dash="dot")
+        )
+
+    # VOLUME
     fig.add_trace(go.Bar(
         x=df_chart.index,
         y=df_chart["Volume"],
-        name="Volume",
-        yaxis="y2",
-        opacity=0.3
-    ))
+        marker_color=colors,
+        opacity=0.5
+    ), row=2, col=1)
 
-    # 📈 SMA50
+    # RSI
     fig.add_trace(go.Scatter(
         x=df_chart.index,
-        y=df_chart["SMA50"],
-        name="SMA50",
-        line=dict(width=1)
-    ))
+        y=df_chart["RSI"],
+        name="RSI"
+    ), row=3, col=1)
 
-    # 📉 SMA200
-    fig.add_trace(go.Scatter(
-        x=df_chart.index,
-        y=df_chart["SMA200"],
-        name="SMA200",
-        line=dict(width=1)
-    ))
+    fig.add_hline(y=70, row=3, col=1)
+    fig.add_hline(y=30, row=3, col=1)
 
     fig.update_layout(
-        title=f"{selected} — Trading View",
+        title=f"{selected} — HEDGE FUND MODE",
         template="plotly_dark",
-        height=650,
+        height=900,
+        hovermode="x unified"
+    )
+    # ================= LAYOUT =================
+    fig.update_layout(
+        title=f"{selected} — PRO+ Signals",
+        template="plotly_dark",
+        height=850,
         hovermode="x unified",
 
-        yaxis=dict(title="Precio"),
-        yaxis2=dict(
-            title="Volumen",
-            overlaying="y",
-            side="right",
-            showgrid=False
-        ),
-
-        xaxis_rangeslider_visible=False
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1, label="1M", step="month", stepmode="backward"),
+                    dict(count=3, label="3M", step="month", stepmode="backward"),
+                    dict(count=6, label="6M", step="month", stepmode="backward"),
+                    dict(count=1, label="YTD", step="year", stepmode="todate"),
+                    dict(count=1, label="1Y", step="year", stepmode="backward"),
+                    dict(step="all")
+                ])
+            ),
+            rangeslider=dict(visible=False),
+            type="date"
+        )
     )
-
     st.plotly_chart(fig, use_container_width=True)

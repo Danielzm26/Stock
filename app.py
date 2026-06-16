@@ -26,8 +26,10 @@ client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
 stocks = ["MU","MSFT","CIEN","VST","NVDA","TSLA","PLTR","AMD","AMZN","AAPL","NFLX",
           "CRWD","NOW","NBIS","BE","ALAB","COIN","SOFI","HIMS","INTC","SNDK","HOOD",
           "CRM","TSM","ASTS","HPE","NU","DUOL","SOUN","UPST","FSLR","RGTI","DELL",
-          "OXY","MSTR","ORCL","ARM","OSCR","CIFR","AAL","MRNA","WULF","RIOT","MARA",
-          "SMCI","SNOW"]
+          "OXY","MSTR","ORCL","ARM","OSCR","CIFR","AAL","WULF","RIOT","MARA",
+          "SMCI","SNOW","AAPL","ASML","LITE","WDC","CRWD","TSM","GOOG",
+          "FSLR","CRDO","SOXL","COIN","ZS","DUOL","NEM","RKLB","ASTS","MP","MRNA",
+          "NIKE","NVYS","SONY","NU","EOSE","SOXS","BTBT","SPCX"]
 
 # ========================= DATA =========================
 @st.cache_data(ttl=600, show_spinner=False)
